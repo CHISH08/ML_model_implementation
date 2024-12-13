@@ -12,7 +12,7 @@ class Node:
         self.criterion = criterion
 
 class DecisionTree:
-    def __init__(self, max_depth=10, min_leaf_split=2):
+    def __init__(self, max_depth=1000, min_leaf_split=2):
         self.root = None
         self.max_depth = max_depth
         self.min_leaf_split = min_leaf_split
@@ -52,14 +52,16 @@ class DecisionTree:
         X = self._prepare_inputs(X)
         def traverse_batch(node, X_batch):
             if node.left_children is None and node.right_children is None:
-                return np.full(X_batch.shape[0], self._predict_leaf(node))
+                return np.full(X_batch.shape[0], self._predict_leaf(node), dtype=float)
 
             left_mask = X_batch[:, node.idx_feature] <= node.threshold
             right_mask = ~left_mask
 
-            predictions = np.empty(X_batch.shape[0], dtype=int)
-            predictions[left_mask] = traverse_batch(node.left_children, X_batch[left_mask])
-            predictions[right_mask] = traverse_batch(node.right_children, X_batch[right_mask])
+            predictions = np.empty(X_batch.shape[0], dtype=float)
+            if left_mask.any():
+                predictions[left_mask] = traverse_batch(node.left_children, X_batch[left_mask])
+            if right_mask.any():
+                predictions[right_mask] = traverse_batch(node.right_children, X_batch[right_mask])
             return predictions
 
         return traverse_batch(self.root, X)
@@ -109,13 +111,24 @@ class DecisionTree:
         return best_criterion, best_threshold
 
     def calculate_criterion(self, y: np.ndarray, y_left: np.ndarray, y_right: np.ndarray):
-        return self.criterion(y) - (len(y_left) / len(y) * self.criterion(y_left) + len(y_right) / len(y) * self.criterion(y_right))
+        total_len = len(y)
+        len_left = len(y_left)
+        len_right = len(y_right)
+
+        if len_left == 0 or len_right == 0:
+            return 0.0
+
+        return (
+            self.criterion(y)
+            - (len_left / total_len * self.criterion(y_left)
+            + len_right / total_len * self.criterion(y_right))
+        )
 
     @staticmethod
     def get_split(X_cols, y, threshold):
         indices = X_cols <= threshold
-        left = y[indices == 1]
-        right = y[indices == 0]
+        left = y[indices]
+        right = y[~indices]
         return left, right
 
     @staticmethod
@@ -167,7 +180,7 @@ class DecisionTreeClassifier(DecisionTree):
         sum_counts = len(y)
         unique_elements, counts = np.unique(y, return_counts=True)
         p_k = counts / sum_counts
-        log_p_k = np.log1p(p_k - 1) / np.log(2)
+        log_p_k = np.where(p_k > 0, np.log(p_k) / np.log(2), 0.0)
         return - np.sum(p_k * log_p_k).item()
 
 
@@ -183,6 +196,8 @@ class DecisionTreeRegressor(DecisionTree):
         Предсказание для листового узла.
         Возвращает класс, который чаще всего встречается в y_values узла.
         """
+        if node.y_values.size == 0:
+            return 0.0
         return node.y_values.mean()
 
     @staticmethod
@@ -192,11 +207,3 @@ class DecisionTreeRegressor(DecisionTree):
         y_pred = np.mean(y)
         mse = np.mean((y - y_pred) ** 2)
         return mse
-
-    @staticmethod
-    def calculate_entropy(y: np.ndarray):
-        sum_counts = len(y)
-        unique_elements, counts = np.unique(y, return_counts=True)
-        p_k = counts / sum_counts
-        log_p_k = np.log1p(p_k - 1) / np.log(2)
-        return - np.sum(p_k * log_p_k).item()

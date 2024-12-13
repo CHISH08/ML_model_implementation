@@ -19,7 +19,7 @@ class RandomForest:
         self.models = [self.class_simple_model(max_depth=max_depth, min_leaf_split=min_leaf_split)
                        for _ in range(self.n_estimators)]
 
-    def fit(self, X, y, n_jobs=-1):
+    def fit(self, X, y):
         self.calc_max_features(X.shape[1])
         X, y = self._prepare_inputs(X, y)
 
@@ -29,7 +29,7 @@ class RandomForest:
             trained_model = self._fit_model(model, X_bootstrap[:, selected_indices], y_bootstrap)
             return selected_indices, trained_model
 
-        results = Parallel(n_jobs=n_jobs)(delayed(train_single_model)(m) for m in self.models)
+        results = Parallel(n_jobs=self.n_jobs)(delayed(train_single_model)(m) for m in self.models)
 
         self.feature_indices, self.models = zip(*results)
         self.feature_indices = list(self.feature_indices)
