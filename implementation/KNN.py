@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 class MyKNeighborsRegressor:
     def __init__(self, n_neighbors=5, weights="uniform"):
         self.n_neighbors = n_neighbors
